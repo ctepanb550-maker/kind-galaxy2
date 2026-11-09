@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Галактика добрых слов</title>
+<style>
+:root{--bg:#07040f;--hint:#b9a6d6;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#07040f;--hint:#b9a6d6}}
+:root[data-theme="dark"]{--bg:#07040f;--hint:#b9a6d6}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent}
+canvas{flex:1;width:100%;min-height:0;display:block;touch-action:none;cursor:grab}
+.hint{margin:0;padding:8px 16px 14px;text-align:center;font-size:13px;line-height:1.4;color:var(--hint)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p class="hint">Тяни, чтобы вращать · щипок или колесо, чтобы приблизиться и прочитать слова</p>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const phrases = ["не грусти","всё будет хорошо","улыбайся","я в тебя верю","ты справишься","ты молодец","ты важна","ты не одна","всё получится","ты сильная","горжусь тобой","дыши глубже","после дождя бывает радуга","ты прекрасна","береги себя","ты настоящее чудо","завтра будет лучше","у тебя получится","ты светишься","тепла тебе","ты заслуживаешь счастья","верь в себя","каждый день — новый шанс","ты умница","обнимаю","мечты сбываются","звёзды с тобой","добра тебе","пусть день будет светлым","ты — свет","всё наладится","ты у меня есть"];
+const cols = ['#ff5d73','#ff8fa3','#ffd166','#c9a7ff','#ffb4a2','#9bf6ff','#ffffff'];
+const R = (a = 1) => Math.random() * a, G = () => (R() + R() + R() - 1.5) / 1.5;
+const items = [];
+function spot(spread) {
+  const r = Math.pow(R(), 0.65) * 620 + 25, arm = Math.floor(R() * 3);
+  const a = r * 0.0105 + arm * Math.PI * 2 / 3 + G() * spread;
+  return { x: r * Math.cos(a), z: r * Math.sin(a), y: G() * (46 * (1 - r / 720) + 10) };
+}
+for (let i = 0; i < 1200; i++) items.push({ ...spot(0.45), k: 's', c: R() < 0.2 ? '#ffc8d6' : '#cfd8ff', ph: R() * 6.28, sz: 0.6 + R() * 1.2 });
+let bag = [];
+for (let i = 0; i < 95; i++) {
+  if (!bag.length) bag = phrases.slice().sort(() => R() - 0.5);
+  items.push({ ...spot(0.55), k: 'w', t: bag.pop(), c: cols[Math.floor(R() * cols.length)], ph: R() * 6.28 });
+}
+for (let i = 0; i < 40; i++) items.push({ ...spot(0.6), k: 'h', t: '♥', c: R() < 0.7 ? '#ff2a3d' : '#ff7a93', ph: R() * 6.28 });
+
+let yaw = 0, pitch = 0.95, cam = 1150, W = 0, H = 0, F = 1;
+function resize() {
+  const d = window.devicePixelRatio || 1; W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); F = Math.min(W, H) * 0.95;
+}
+function project(p, t) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const y0 = p.y + Math.sin(t * 0.8 + p.ph) * 7;
+  const x1 = p.x * cy - p.z * sy, z1 = p.x * sy + p.z * cy;
+  const y2 = y0 * cp - z1 * sp, z2 = y0 * sp + z1 * cp, zc = z2 + cam;
+  if (zc < 25) return null;
+  const s = F / zc; return { x: W / 2 + x1 * s, y: H / 2 + y2 * s, s, z: zc };
+}
+let last = performance.now(), time = 0;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now; time += dt;
+  if (!dragging) yaw += dt * 0.07;
+  ctx.clearRect(0, 0, W, H);
+  const c0 = project({ x: 0, y: 0, z: 0, ph: 0 }, 0);
+  if (c0) {
+    const g = ctx.createRadialGradient(c0.x, c0.y, 0, c0.x, c0.y, 260 * c0.s + 20);
+    g.addColorStop(0, 'rgba(255,190,170,0.45)'); g.addColorStop(0.4, 'rgba(190,90,170,0.18)'); g.addColorStop(1, 'rgba(7,4,15,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  const words = [];
+  for (const p of items) {
+    const q = project(p, time); if (!q) continue;
+    if (q.x < -80 || q.x > W + 80 || q.y < -40 || q.y > H + 40) continue;
+    if (p.k === 's') {
+      ctx.globalAlpha = Math.min(1, 0.35 + 0.35 * Math.sin(time * 2 + p.ph) + 0.3) * Math.min(1, q.s * 2.2);
+      ctx.fillStyle = p.c; const r = p.sz * Math.min(3, 0.6 + q.s * 1.2); ctx.fillRect(q.x, q.y, r, r);
+    } else { q.p = p; words.push(q); }
+  }
+  words.sort((a, b) => b.z - a.z);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const q of words) {
+    const p = q.p, big = p.k === 'h' ? 1.15 : 1, fs = Math.min(80, 36 * q.s * big);
+    if (fs < 4.5) continue;
+    ctx.globalAlpha = Math.max(0, Math.min(1, (fs - 4.5) / 7)) * Math.min(1, (q.z - 25) / 90);
+    ctx.font = fs + 'px system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.shadowColor = p.c; ctx.shadowBlur = fs * 0.5; ctx.fillStyle = p.c;
+    ctx.fillText(p.t, q.x, q.y);
+  }
+  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  requestAnimationFrame(frame);
+}
+let dragging = false; const ptr = new Map(); let pinch = 0;
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, e); dragging = true; cv.style.cursor = 'grabbing'; if (ptr.size === 2) pinch = dist(); });
+cv.addEventListener('pointermove', e => {
+  const o = ptr.get(e.pointerId); if (!o) return;
+  if (ptr.size === 1) { yaw += (e.clientX - o.clientX) * 0.006; pitch = Math.max(0.15, Math.min(1.45, pitch + (e.clientY - o.clientY) * 0.005)); }
+  ptr.set(e.pointerId, e);
+  if (ptr.size === 2) { const d = dist(); if (pinch) zoom(pinch / d); pinch = d; }
+});
+const up = e => { ptr.delete(e.pointerId); pinch = 0; if (!ptr.size) { dragging = false; cv.style.cursor = 'grab'; } };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', e => { e.preventDefault(); zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+function dist() { const [a, b] = [...ptr.values()]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1; }
+function zoom(k) { cam = Math.max(70, Math.min(1500, cam * k)); }
+window.addEventListener('resize', resize);
+resize(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
